@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Search, Plus, Minus, Trash2, ShoppingCart, Banknote, CreditCard, Package, User, Phone, FileText, CheckCircle, ChevronDown, ChevronUp } from 'lucide-react';
+import { Search, Plus, Minus, Trash2, ShoppingCart, Banknote, CreditCard, Package, User, Phone, FileText, CheckCircle, ChevronDown, ChevronUp, Printer, TrendingUp, ScanBarcode } from 'lucide-react';
 import { toast } from 'sonner';
 import api from '../services/api';
 import { useCartStore } from '../stores/cartStore';
@@ -30,6 +30,7 @@ export default function POS() {
   const debouncedSearch = useDebounce(search, 300);
   const [paymentMethod, setPaymentMethod] = useState('cash');
   const [amountPaid, setAmountPaid] = useState('');
+  const [mixedCash, setMixedCash] = useState('');
   const [discount, setDiscount] = useState(0);
   const [selectedCategory, setSelectedCategory] = useState(null);
   const [customerName, setCustomerName] = useState('');
@@ -37,6 +38,8 @@ export default function POS() {
   const [notes, setNotes] = useState('');
   const [showCustomerFields, setShowCustomerFields] = useState(false);
   const [lastOrder, setLastOrder] = useState(null);
+  const [showTodaySales, setShowTodaySales] = useState(false);
+  const searchRef = useRef(null);
   const queryClient = useQueryClient();
   
   const { items, addItem, updateQuantity, removeItem, clearCart, getSubtotal, getTotalItems } = useCartStore();
@@ -71,6 +74,23 @@ export default function POS() {
     enabled: !!selectedCategory,
   });
 
+  const { data: todaySalesData } = useQuery({
+    queryKey: ['orders', 'today'],
+    queryFn: async () => {
+      const { data } = await api.get('/orders/today');
+      return data.data;
+    },
+    refetchInterval: 30000,
+  });
+
+  useEffect(() => {
+    if (productsData?.length === 1 && debouncedSearch && productsData[0].barCode?.toLowerCase() === debouncedSearch.toLowerCase()) {
+      handleQuickAdd(productsData[0]);
+      setSearch('');
+      searchRef.current?.focus();
+    }
+  }, [productsData, debouncedSearch]);
+
   const createOrderMutation = useMutation({
     mutationFn: (order) => api.post('/orders', order),
     onSuccess: (response) => {
@@ -79,6 +99,7 @@ export default function POS() {
       setLastOrder(response.data.data);
       clearCart();
       setAmountPaid('');
+      setMixedCash('');
       setDiscount(0);
       setCustomerName('');
       setCustomerPhone('');
@@ -101,8 +122,12 @@ export default function POS() {
   const subtotal = getSubtotal();
   const total = Math.max(0, subtotal - discount);
   const amountPaidNum = Number(amountPaid) || 0;
+  const mixedCashNum = Number(mixedCash) || 0;
+  const mixedTransfer = Math.max(0, total - mixedCashNum);
   const change = paymentMethod === 'cash' && amountPaidNum > 0 ? Math.max(0, amountPaidNum - total) : 0;
   const needsChange = paymentMethod === 'cash' && amountPaidNum > 0 && amountPaidNum >= total;
+  const isMixedValid = paymentMethod === 'mixed' && mixedCashNum > 0;
+  const isDebtValid = paymentMethod === 'debt' && customerName.trim().length > 0;
 
   const quickAmounts = [100, 200, 500, 1000, 2000, 5000];
 
@@ -121,6 +146,23 @@ export default function POS() {
       return;
     }
 
+    if (paymentMethod === 'mixed' && mixedCashNum <= 0) {
+      toast.error('Ingresá el monto en efectivo');
+      return;
+    }
+
+    if (paymentMethod === 'debt' && !customerName.trim()) {
+      toast.error('El nombre del cliente es obligatorio para ventas a cuenta');
+      setShowCustomerFields(true);
+      return;
+    }
+
+    let finalAmountPaid;
+    if (paymentMethod === 'cash') finalAmountPaid = amountPaidNum || total;
+    else if (paymentMethod === 'mixed') finalAmountPaid = total;
+    else if (paymentMethod === 'debt') finalAmountPaid = 0;
+    else finalAmountPaid = total;
+
     const order = {
       items: items.map(item => ({
         product: item.product._id,
@@ -131,7 +173,7 @@ export default function POS() {
       customer: customerName.trim() ? { name: customerName.trim(), phone: customerPhone.trim() } : undefined,
       discount,
       paymentMethod,
-      amountPaid: amountPaidNum || total,
+      amountPaid: finalAmountPaid,
       notes: notes.trim()
     };
 
@@ -152,21 +194,36 @@ export default function POS() {
     handleAddToCart(product);
   };
 
+  const handlePrint = () => {
+    window.print();
+  };
+
+  const getPaymentLabel = (method) => {
+    switch (method) {
+      case 'cash': return 'Efectivo';
+      case 'transfer': return 'Transferencia';
+      case 'mixed': return 'Mixto';
+      case 'debt': return 'A cuenta';
+      default: return method;
+    }
+  };
+
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-[calc(100vh-180px)]">
       <div className="lg:col-span-2 card flex flex-col overflow-hidden">
         <div className="p-4 border-b border-gray-100">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
-            <input
-              type="text"
-              placeholder="Buscar producto por nombre o código..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="input pl-10"
-              autoFocus
-            />
-          </div>
+            <div className="relative">
+              <ScanBarcode className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
+              <input
+                ref={searchRef}
+                type="text"
+                placeholder="Buscar por nombre, código o escanear..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="input pl-10"
+                autoFocus
+              />
+            </div>
         </div>
 
         <div className="flex-1 overflow-y-auto p-4">
@@ -294,12 +351,46 @@ export default function POS() {
               <ShoppingCart size={20} />
               Carrito
             </h3>
-            {items.length > 0 && (
-              <button onClick={clearCart} className="text-sm text-gray-500 hover:text-red-500">
-                Limpiar
+            <div className="flex items-center gap-2">
+              <button 
+                onClick={() => setShowTodaySales(!showTodaySales)}
+                className={`text-sm flex items-center gap-1 px-2 py-1 rounded-lg transition-colors ${
+                  showTodaySales ? 'bg-primary-100 text-primary-700' : 'text-gray-500 hover:bg-gray-200'
+                }`}
+                title="Ver ventas del día"
+              >
+                <TrendingUp size={16} />
+                <span className="text-xs">${formatCurrency(todaySalesData?.totalAmount || 0)}</span>
               </button>
-            )}
+              {items.length > 0 && (
+                <button onClick={clearCart} className="text-sm text-gray-500 hover:text-red-500">
+                  Limpiar
+                </button>
+              )}
+            </div>
           </div>
+
+          {showTodaySales && todaySalesData && (
+            <div className="mt-3 p-3 bg-white rounded-xl border border-gray-200 text-sm space-y-1">
+              <div className="flex justify-between">
+                <span className="text-gray-500">Ventas del día</span>
+                <span className="font-bold text-green-700">${formatCurrency(todaySalesData.totalAmount)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-500">Órdenes</span>
+                <span className="font-medium">{todaySalesData.totalOrders}</span>
+              </div>
+              {todaySalesData.orders?.slice(0, 3).map((order) => (
+                <div key={order._id} className="flex justify-between text-xs text-gray-400 pt-1 border-t border-gray-100">
+                  <span>#{order.orderNumber}</span>
+                  <span>${formatCurrency(order.total)}</span>
+                </div>
+              ))}
+              {todaySalesData.totalOrders > 3 && (
+                <p className="text-xs text-gray-400 text-center pt-1">y {todaySalesData.totalOrders - 3} más...</p>
+              )}
+            </div>
+          )}
         </div>
 
         <div className="flex-1 overflow-y-auto p-4 space-y-3">
@@ -402,20 +493,36 @@ export default function POS() {
             </div>
           </div>
 
-          <div className="flex gap-2">
+          <div className="grid grid-cols-2 gap-2">
             <button
               onClick={() => setPaymentMethod('cash')}
-              className={`flex-1 btn py-2 text-sm ${paymentMethod === 'cash' ? 'btn-primary' : 'btn-secondary'}`}
+              className={`btn py-2 text-sm ${paymentMethod === 'cash' ? 'btn-primary' : 'btn-secondary'}`}
             >
               <Banknote size={18} />
               Efectivo
             </button>
             <button
               onClick={() => setPaymentMethod('transfer')}
-              className={`flex-1 btn py-2 text-sm ${paymentMethod === 'transfer' ? 'btn-primary' : 'btn-secondary'}`}
+              className={`btn py-2 text-sm ${paymentMethod === 'transfer' ? 'btn-primary' : 'btn-secondary'}`}
             >
               <CreditCard size={18} />
               Transferencia
+            </button>
+            <button
+              onClick={() => setPaymentMethod('mixed')}
+              className={`btn py-2 text-sm ${paymentMethod === 'mixed' ? 'btn-primary' : 'btn-secondary'}`}
+            >
+              <Banknote size={16} />
+              <span className="text-xs">+</span>
+              <CreditCard size={16} />
+              Mixto
+            </button>
+            <button
+              onClick={() => setPaymentMethod('debt')}
+              className={`btn py-2 text-sm ${paymentMethod === 'debt' ? 'btn-primary' : 'btn-secondary'}`}
+            >
+              <User size={18} />
+              A cuenta
             </button>
           </div>
 
@@ -479,9 +586,61 @@ export default function POS() {
             </div>
           )}
 
+          {paymentMethod === 'mixed' && (
+            <div className="space-y-2">
+              <label className="block text-sm font-medium text-gray-700">Pago Mixto</label>
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <Banknote size={16} className="text-gray-400 shrink-0" />
+                  <input
+                    type="number"
+                    value={mixedCash}
+                    onChange={(e) => setMixedCash(e.target.value)}
+                    className="input flex-1"
+                    placeholder="Efectivo"
+                  />
+                </div>
+                <div className="flex items-center gap-2">
+                  <CreditCard size={16} className="text-gray-400 shrink-0" />
+                  <div className="input flex-1 bg-gray-100 text-gray-600">
+                    ${formatCurrency(mixedTransfer)} Transferencia
+                  </div>
+                </div>
+              </div>
+              {mixedCashNum > total && (
+                <div className="p-2 bg-red-50 border border-red-200 rounded-lg text-xs text-red-700">
+                  El efectivo no puede superar el total
+                </div>
+              )}
+              {mixedCashNum > 0 && mixedCashNum <= total && (
+                <div className="p-2 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-700">
+                  Efectivo: ${formatCurrency(mixedCashNum)} + Transferencia: ${formatCurrency(mixedTransfer)} = ${formatCurrency(total)}
+                </div>
+              )}
+            </div>
+          )}
+
+          {paymentMethod === 'debt' && (
+            <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+              <p className="text-sm text-yellow-800 font-medium">Venta a cuenta</p>
+              <p className="text-xs text-yellow-700 mt-1">
+                {!customerName.trim() 
+                  ? '⚠️ Ingresá el nombre del cliente para continuar'
+                  : `Se registrará deuda de $${formatCurrency(total)} a nombre de ${customerName.trim()}`
+                }
+              </p>
+            </div>
+          )}
+
           <button
             onClick={handleCompleteSale}
-            disabled={items.length === 0 || createOrderMutation.isPending || (paymentMethod === 'cash' && amountPaidNum < total)}
+            disabled={
+              items.length === 0 || 
+              createOrderMutation.isPending || 
+              (paymentMethod === 'cash' && amountPaidNum < total) ||
+              (paymentMethod === 'mixed' && !isMixedValid) ||
+              (paymentMethod === 'debt' && !isDebtValid)
+            }
             className="btn btn-primary w-full py-3 text-lg font-semibold disabled:opacity-50"
           >
             {createOrderMutation.isPending ? 'Procesando...' : 'Completar Venta'}
@@ -546,8 +705,8 @@ export default function POS() {
                 <span className="text-primary-600">${formatCurrency(lastOrder.total)}</span>
               </div>
               <div className="flex justify-between text-sm text-gray-500">
-                <span>{lastOrder.paymentMethod === 'cash' ? 'Efectivo' : 'Transferencia'}</span>
-                <span>Pagado: ${formatCurrency(lastOrder.amountPaid)}</span>
+                <span>{getPaymentLabel(lastOrder.paymentMethod)}</span>
+                <span>{lastOrder.paymentMethod === 'debt' ? 'Pendiente de cobro' : `Pagado: $${formatCurrency(lastOrder.amountPaid)}`}</span>
               </div>
               {lastOrder.change > 0 && (
                 <div className="flex justify-between text-green-600 font-bold">
@@ -562,12 +721,21 @@ export default function POS() {
               )}
             </div>
 
-            <button
-              onClick={() => setLastOrder(null)}
-              className="btn btn-primary w-full"
-            >
-              Nueva Venta
-            </button>
+            <div className="flex gap-2">
+              <button
+                onClick={handlePrint}
+                className="btn btn-secondary flex-1"
+              >
+                <Printer size={18} />
+                Imprimir
+              </button>
+              <button
+                onClick={() => setLastOrder(null)}
+                className="btn btn-primary flex-1"
+              >
+                Nueva Venta
+              </button>
+            </div>
           </div>
         </Modal>
       )}
