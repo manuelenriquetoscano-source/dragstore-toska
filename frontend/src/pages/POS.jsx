@@ -1,11 +1,12 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Search, Plus, Minus, Trash2, ShoppingCart, Banknote, CreditCard } from 'lucide-react';
+import { Search, Plus, Minus, Trash2, ShoppingCart, Banknote, CreditCard, Package } from 'lucide-react';
 import { toast } from 'sonner';
 import api from '../services/api';
 import { useCartStore } from '../stores/cartStore';
 import { useDebounce } from '../hooks/useDebounce';
 import { formatCurrency } from '../utils/format';
+import Modal from '../components/common/Modal';
 
 export default function POS() {
   const [search, setSearch] = useState('');
@@ -13,9 +14,18 @@ export default function POS() {
   const [paymentMethod, setPaymentMethod] = useState('cash');
   const [amountPaid, setAmountPaid] = useState('');
   const [discount, setDiscount] = useState(0);
+  const [selectedCategory, setSelectedCategory] = useState(null);
   const queryClient = useQueryClient();
   
   const { items, addItem, updateQuantity, removeItem, clearCart, getSubtotal, getTotalItems } = useCartStore();
+
+  const { data: categoriesData } = useQuery({
+    queryKey: ['categories'],
+    queryFn: async () => {
+      const { data } = await api.get('/categories');
+      return data.data;
+    },
+  });
 
   const { data: productsData } = useQuery({
     queryKey: ['products', debouncedSearch],
@@ -25,6 +35,18 @@ export default function POS() {
       });
       return data.data;
     },
+    enabled: !!debouncedSearch,
+  });
+
+  const { data: categoryProducts } = useQuery({
+    queryKey: ['products', 'category', selectedCategory?._id],
+    queryFn: async () => {
+      const { data } = await api.get('/products', {
+        params: { category: selectedCategory._id, limit: 100, active: true }
+      });
+      return data.data;
+    },
+    enabled: !!selectedCategory,
   });
 
   const createOrderMutation = useMutation({
@@ -121,39 +143,115 @@ export default function POS() {
         </div>
 
         <div className="flex-1 overflow-y-auto p-4">
-          <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-3">
-            {productsData?.map((product) => {
-              const inCart = items.find(i => i.product._id === product._id);
-              return (
+          {debouncedSearch ? (
+            <div>
+              <p className="text-sm text-gray-500 mb-3">
+                Resultados para "{debouncedSearch}" ({productsData?.length || 0})
+              </p>
+              <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-3">
+                {productsData?.map((product) => {
+                  const inCart = items.find(i => i.product._id === product._id);
+                  return (
+                    <button
+                      key={product._id}
+                      onClick={() => handleQuickAdd(product)}
+                      disabled={product.stock <= 0}
+                      className={`p-3 rounded-xl border-2 text-left transition-all hover:shadow-md ${
+                        product.stock <= 0 
+                          ? 'border-gray-100 bg-gray-50 opacity-60' 
+                          : inCart 
+                            ? 'border-primary-500 bg-primary-50' 
+                            : 'border-gray-100 hover:border-primary-200'
+                      }`}
+                    >
+                      <div 
+                        className="w-full h-16 rounded-lg mb-2 flex items-center justify-center text-2xl"
+                        style={{ backgroundColor: (product.category?.color || '#6366f1') + '20' }}
+                      >
+                        🛒
+                      </div>
+                      <p className="font-medium text-gray-900 text-sm truncate">{product.name}</p>
+                      <p className="text-primary-600 font-bold">${formatCurrency(product.salePrice || 0)}</p>
+                      <p className="text-xs text-gray-500 mt-1">
+                        Stock: <span className={product.stock <= product.minStock ? 'text-orange-600 font-medium' : ''}>{product.stock}</span>
+                        {inCart && <span className="text-primary-600 ml-1">({inCart.quantity})</span>}
+                      </p>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-4">
+              {categoriesData?.map((category) => (
                 <button
-                  key={product._id}
-                  onClick={() => handleQuickAdd(product)}
-                  disabled={product.stock <= 0}
-                  className={`p-3 rounded-xl border-2 text-left transition-all hover:shadow-md ${
-                    product.stock <= 0 
-                      ? 'border-gray-100 bg-gray-50 opacity-60' 
-                      : inCart 
-                        ? 'border-primary-500 bg-primary-50' 
-                        : 'border-gray-100 hover:border-primary-200'
-                  }`}
+                  key={category._id}
+                  onClick={() => setSelectedCategory(category)}
+                  className="p-5 rounded-2xl border-2 border-gray-100 text-left transition-all hover:shadow-lg hover:border-primary-300 hover:-translate-y-1 group"
                 >
                   <div 
-                    className="w-full h-16 rounded-lg mb-2 flex items-center justify-center text-2xl"
-                    style={{ backgroundColor: product.category?.color + '20' }}
+                    className="w-full h-20 rounded-xl mb-3 flex items-center justify-center transition-transform group-hover:scale-105"
+                    style={{ backgroundColor: (category.color || '#6366f1') + '25' }}
                   >
-                    🛒
+                    <Package size={32} style={{ color: category.color || '#6366f1' }} />
                   </div>
-                  <p className="font-medium text-gray-900 text-sm truncate">{product.name}</p>
-                  <p className="text-primary-600 font-bold">${formatCurrency(product.salePrice || 0)}</p>
-                  <p className="text-xs text-gray-500 mt-1">
-                    Stock: <span className={product.stock <= product.minStock ? 'text-orange-600 font-medium' : ''}>{product.stock}</span>
-                    {inCart && <span className="text-primary-600 ml-1">({inCart.quantity})</span>}
-                  </p>
+                  <p className="font-semibold text-gray-900 text-sm truncate">{category.name}</p>
+                  {category.description && (
+                    <p className="text-xs text-gray-500 mt-1 line-clamp-2">{category.description}</p>
+                  )}
                 </button>
-              );
-            })}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
+
+        {selectedCategory && (
+          <Modal
+            isOpen={!!selectedCategory}
+            onClose={() => setSelectedCategory(null)}
+            title={selectedCategory.name}
+            size="xl"
+          >
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 max-h-[60vh] overflow-y-auto">
+              {categoryProducts?.length === 0 ? (
+                <p className="col-span-full text-center text-gray-500 py-8">
+                  No hay productos en esta categoría
+                </p>
+              ) : (
+                categoryProducts?.map((product) => {
+                  const inCart = items.find(i => i.product._id === product._id);
+                  return (
+                    <button
+                      key={product._id}
+                      onClick={() => handleQuickAdd(product)}
+                      disabled={product.stock <= 0}
+                      className={`p-3 rounded-xl border-2 text-left transition-all hover:shadow-md ${
+                        product.stock <= 0 
+                          ? 'border-gray-100 bg-gray-50 opacity-60' 
+                          : inCart 
+                            ? 'border-primary-500 bg-primary-50' 
+                            : 'border-gray-100 hover:border-primary-200'
+                      }`}
+                    >
+                      <div 
+                        className="w-full h-16 rounded-lg mb-2 flex items-center justify-center text-2xl"
+                        style={{ backgroundColor: (selectedCategory.color || '#6366f1') + '20' }}
+                      >
+                        🛒
+                      </div>
+                      <p className="font-medium text-gray-900 text-sm truncate">{product.name}</p>
+                      <p className="text-primary-600 font-bold">${formatCurrency(product.salePrice || 0)}</p>
+                      <p className="text-xs text-gray-500 mt-1">
+                        Stock: <span className={product.stock <= product.minStock ? 'text-orange-600 font-medium' : ''}>{product.stock}</span>
+                        {inCart && <span className="text-primary-600 ml-1">({inCart.quantity})</span>}
+                      </p>
+                    </button>
+                  );
+                })
+              )}
+            </div>
+          </Modal>
+        )}
       </div>
 
       <div className="card flex flex-col overflow-hidden">
