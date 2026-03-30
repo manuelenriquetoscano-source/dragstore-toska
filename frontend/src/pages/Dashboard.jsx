@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { DollarSign, ShoppingCart, Package, AlertTriangle, TrendingUp } from 'lucide-react';
 import api from '../services/api';
+import { formatCurrency } from '../utils/format';
 
 export default function Dashboard() {
   const { data: stats, isLoading, error } = useQuery({
@@ -34,10 +35,6 @@ export default function Dashboard() {
   const monthOrders = stats?.monthOrders || 0;
   const lowStockCount = stats?.lowStockCount || 0;
   const totalProducts = stats?.totalProducts || 0;
-
-  const formatCurrency = (value) => {
-    return new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(value);
-  };
 
   const statsCards = [
     { 

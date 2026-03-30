@@ -4,9 +4,12 @@ import { Search, Plus, Minus, Trash2, ShoppingCart, Banknote, CreditCard } from 
 import { toast } from 'sonner';
 import api from '../services/api';
 import { useCartStore } from '../stores/cartStore';
+import { useDebounce } from '../hooks/useDebounce';
+import { formatCurrency } from '../utils/format';
 
 export default function POS() {
   const [search, setSearch] = useState('');
+  const debouncedSearch = useDebounce(search, 300);
   const [paymentMethod, setPaymentMethod] = useState('cash');
   const [amountPaid, setAmountPaid] = useState('');
   const [discount, setDiscount] = useState(0);
@@ -15,7 +18,7 @@ export default function POS() {
   const { items, addItem, updateQuantity, removeItem, clearCart, getSubtotal, getTotalItems } = useCartStore();
 
   const { data: productsData } = useQuery({
-    queryKey: ['products', search],
+    queryKey: ['products', debouncedSearch],
     queryFn: async () => {
       const { data } = await api.get('/products', { 
         params: { search, limit: 50, active: true } 
@@ -98,10 +101,6 @@ export default function POS() {
       return;
     }
     handleAddToCart(product);
-  };
-
-  const formatCurrency = (value) => {
-    return new Intl.NumberFormat('es-AR').format(value);
   };
 
   return (

@@ -1,10 +1,11 @@
-import { Outlet, Link, useLocation } from 'react-router-dom';
+import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
 import { 
   LayoutDashboard, Package, Tags, ShoppingCart, Receipt, 
   BarChart3, LogOut, Menu, X 
 } from 'lucide-react';
 import { useState } from 'react';
 import { useAuthStore } from '../../stores/authStore';
+import api from '../../services/api';
 import { toast } from 'sonner';
 
 const menuItems = [
@@ -19,13 +20,19 @@ const menuItems = [
 export default function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const location = useLocation();
+  const navigate = useNavigate();
   const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    try {
+      await api.post('/auth/logout');
+    } catch {
+      // Logout local aunque falle el server
+    }
     logout();
     toast.success('Sesión cerrada');
-    window.location.href = '/login';
+    navigate('/login', { replace: true });
   };
 
   const getPageTitle = () => {

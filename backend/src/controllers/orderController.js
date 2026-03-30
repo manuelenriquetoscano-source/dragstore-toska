@@ -78,11 +78,16 @@ export const createOrder = async (req, res, next) => {
       });
     }
 
+    const productIds = items.map(item => item.product);
+    const products = await Product.find({ _id: { $in: productIds } });
+    const productMap = new Map(products.map(p => [p._id.toString(), p]));
+
     const processedItems = [];
     let subtotal = 0;
+    const stockUpdates = [];
 
     for (const item of items) {
-      const product = await Product.findById(item.product);
+      const product = productMap.get(item.product);
       
       if (!product) {
         return res.status(400).json({ 
@@ -109,9 +114,15 @@ export const createOrder = async (req, res, next) => {
         subtotal: itemSubtotal
       });
 
-      product.stock -= item.quantity;
-      await product.save();
+      stockUpdates.push({
+        updateOne: {
+          filter: { _id: product._id },
+          update: { $inc: { stock: -item.quantity } }
+        }
+      });
     }
+
+    await Product.bulkWrite(stockUpdates);
 
     const total = subtotal - discount;
     const change = paymentMethod === 'cash' ? (amountPaid || 0) - total : 0;
@@ -160,11 +171,13 @@ export const cancelOrder = async (req, res, next) => {
       });
     }
 
-    for (const item of order.items) {
-      await Product.findByIdAndUpdate(item.product, {
-        $inc: { stock: item.quantity }
-      });
-    }
+    const bulkStockRestore = order.items.map(item => ({
+      updateOne: {
+        filter: { _id: item.product },
+        update: { $inc: { stock: item.quantity } }
+      }
+    }));
+    await Product.bulkWrite(bulkStockRestore);
 
     order.status = 'cancelled';
     order.cancelledBy = req.user._id;

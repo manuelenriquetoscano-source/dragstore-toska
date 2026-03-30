@@ -74,7 +74,7 @@ const products = [
   { name: 'Aceite Cocinero 900ml', category: 'Aceites y Condimentos', purchasePrice: 680, salePrice: 980, stock: 30, unit: 'botella' },
   { name: 'Aceite Natura 900ml', category: 'Aceites y Condimentos', purchasePrice: 720, salePrice: 1050, stock: 25, unit: 'botella' },
   { name: 'Vinagre de Alcohol 1L', category: 'Aceites y Condimentos', purchasePrice: 250, salePrice: 380, stock: 20, unit: 'botella' },
-  { name: 'Mayonesa Hellmann's 475g', category: 'Aceites y Condimentos', purchasePrice: 580, salePrice: 850, stock: 18, unit: 'pote' },
+  { name: "Mayonesa Hellmann's 475g", category: 'Aceites y Condimentos', purchasePrice: 580, salePrice: 850, stock: 18, unit: 'pote' },
   { name: 'Ketchup Heintz 380g', category: 'Aceites y Condimentos', purchasePrice: 420, salePrice: 620, stock: 15, unit: 'pote' },
   { name: 'Ají Molido 80g', category: 'Aceites y Condimentos', purchasePrice: 180, salePrice: 280, stock: 30, unit: 'paquete' },
   { name: 'Comino 80g', category: 'Aceites y Condimentos', purchasePrice: 160, salePrice: 250, stock: 25, unit: 'paquete' },

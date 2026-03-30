@@ -9,9 +9,10 @@ import { authenticate, authorize } from '../middleware/auth.js';
 
 const router = Router();
 
+router.use(authenticate);
 router.get('/', getCategories);
-router.post('/', authenticate, authorize('admin'), createCategory);
-router.put('/:id', authenticate, authorize('admin'), updateCategory);
-router.delete('/:id', authenticate, authorize('admin'), deleteCategory);
+router.post('/', authorize('admin'), createCategory);
+router.put('/:id', authorize('admin'), updateCategory);
+router.delete('/:id', authorize('admin'), deleteCategory);
 
 export default router;

@@ -77,10 +77,12 @@ export default function Login() {
             </button>
           </form>
 
-          <div className="mt-6 p-4 bg-gray-50 rounded-lg">
-            <p className="text-sm text-gray-600 font-medium mb-2">Prueba:</p>
-            <p className="text-xs text-gray-500">admin@toska.com / admin123</p>
-          </div>
+          {import.meta.env.DEV && (
+            <div className="mt-6 p-4 bg-gray-50 rounded-lg">
+              <p className="text-sm text-gray-600 font-medium mb-2">Prueba (DEV):</p>
+              <p className="text-xs text-gray-500">admin@toska.com / admin123</p>
+            </div>
+          )}
         </div>
       </div>
     </div>

@@ -1,5 +1,17 @@
 import jwt from 'jsonwebtoken';
+import crypto from 'crypto';
 import User from '../models/User.js';
+import BlacklistToken from '../models/BlacklistToken.js';
+
+function generateToken(user) {
+  const jti = crypto.randomUUID();
+  const token = jwt.sign(
+    { userId: user._id, role: user.role, jti },
+    process.env.JWT_SECRET,
+    { expiresIn: process.env.JWT_EXPIRES_IN }
+  );
+  return { token, jti };
+}
 
 export const register = async (req, res, next) => {
   try {
@@ -15,15 +27,11 @@ export const register = async (req, res, next) => {
 
     const user = await User.create({ name, email, password, role });
 
-    const token = jwt.sign(
-      { userId: user._id, role: user.role },
-      process.env.JWT_SECRET,
-      { expiresIn: process.env.JWT_EXPIRES_IN }
-    );
+    const { token } = generateToken(user);
 
     res.status(201).json({
       success: true,
-      data: { user, token },
+      data: { user: user.toJSON(), token },
       message: 'Usuario registrado exitosamente'
     });
   } catch (error) {
@@ -50,15 +58,11 @@ export const login = async (req, res, next) => {
       });
     }
 
-    const token = jwt.sign(
-      { userId: user._id, role: user.role },
-      process.env.JWT_SECRET,
-      { expiresIn: process.env.JWT_EXPIRES_IN }
-    );
+    const { token } = generateToken(user);
 
     res.json({
       success: true,
-      data: { user, token },
+      data: { user: user.toJSON(), token },
       message: 'Inicio de sesión exitoso'
     });
   } catch (error) {
@@ -92,6 +96,52 @@ export const updateProfile = async (req, res, next) => {
       success: true,
       data: user,
       message: 'Perfil actualizado'
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const refresh = async (req, res, next) => {
+  try {
+    const user = req.user;
+    const oldJti = req.tokenJti;
+
+    if (oldJti) {
+      const decoded = req.tokenDecoded;
+      await BlacklistToken.create({
+        jti: oldJti,
+        expiresAt: new Date(decoded.exp * 1000)
+      });
+    }
+
+    const { token } = generateToken(user);
+
+    res.json({
+      success: true,
+      data: { token },
+      message: 'Token renovado'
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const logout = async (req, res, next) => {
+  try {
+    const jti = req.tokenJti;
+    const decoded = req.tokenDecoded;
+
+    if (jti && decoded) {
+      await BlacklistToken.create({
+        jti,
+        expiresAt: new Date(decoded.exp * 1000)
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'Sesión cerrada'
     });
   } catch (error) {
     next(error);

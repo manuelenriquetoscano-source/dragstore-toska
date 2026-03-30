@@ -16,7 +16,7 @@ const productSchema = new mongoose.Schema({
   minStock: { type: Number, default: 5 },
   unit: { 
     type: String, 
-    enum: ['unidad', 'kg', 'litro', 'paquete', 'botella', 'lata', 'bolsa'],
+    enum: ['unidad', 'kg', 'litro', 'paquete', 'botella', 'lata', 'bolsa', 'pote', 'tubo', 'rollo', 'docena', 'atado', 'caja', 'tabla'],
     default: 'unidad' 
   },
   supplier: { type: mongoose.Schema.Types.ObjectId, ref: 'Supplier' },
