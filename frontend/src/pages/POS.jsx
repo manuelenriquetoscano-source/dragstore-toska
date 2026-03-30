@@ -1,12 +1,29 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Search, Plus, Minus, Trash2, ShoppingCart, Banknote, CreditCard, Package } from 'lucide-react';
+import { Search, Plus, Minus, Trash2, ShoppingCart, Banknote, CreditCard, Package, User, Phone, FileText, CheckCircle, ChevronDown, ChevronUp } from 'lucide-react';
 import { toast } from 'sonner';
 import api from '../services/api';
 import { useCartStore } from '../stores/cartStore';
 import { useDebounce } from '../hooks/useDebounce';
 import { formatCurrency } from '../utils/format';
 import Modal from '../components/common/Modal';
+
+const UNIT_LABELS = {
+  unidad: 'u',
+  kg: 'kg',
+  litro: 'L',
+  paquete: 'pqt',
+  botella: 'bot',
+  lata: 'lata',
+  bolsa: 'bolsa',
+  pote: 'pote',
+  tubo: 'tubo',
+  rollo: 'rollo',
+  docena: 'doc',
+  atado: 'atado',
+  caja: 'caja',
+  tabla: 'tabla',
+};
 
 export default function POS() {
   const [search, setSearch] = useState('');
@@ -15,6 +32,11 @@ export default function POS() {
   const [amountPaid, setAmountPaid] = useState('');
   const [discount, setDiscount] = useState(0);
   const [selectedCategory, setSelectedCategory] = useState(null);
+  const [customerName, setCustomerName] = useState('');
+  const [customerPhone, setCustomerPhone] = useState('');
+  const [notes, setNotes] = useState('');
+  const [showCustomerFields, setShowCustomerFields] = useState(false);
+  const [lastOrder, setLastOrder] = useState(null);
   const queryClient = useQueryClient();
   
   const { items, addItem, updateQuantity, removeItem, clearCart, getSubtotal, getTotalItems } = useCartStore();
@@ -51,13 +73,17 @@ export default function POS() {
 
   const createOrderMutation = useMutation({
     mutationFn: (order) => api.post('/orders', order),
-    onSuccess: () => {
+    onSuccess: (response) => {
       queryClient.invalidateQueries(['products']);
       queryClient.invalidateQueries(['dashboard-stats']);
-      toast.success('Venta registrada exitosamente!');
+      setLastOrder(response.data.data);
       clearCart();
       setAmountPaid('');
       setDiscount(0);
+      setCustomerName('');
+      setCustomerPhone('');
+      setNotes('');
+      setShowCustomerFields(false);
     },
     onError: (error) => {
       toast.error(error.response?.data?.error?.message || 'Error al registrar venta');
@@ -102,10 +128,11 @@ export default function POS() {
         unitPrice: item.product.salePrice,
         subtotal: item.product.salePrice * item.quantity
       })),
+      customer: customerName.trim() ? { name: customerName.trim(), phone: customerPhone.trim() } : undefined,
       discount,
       paymentMethod,
       amountPaid: amountPaidNum || total,
-      notes: ''
+      notes: notes.trim()
     };
 
     createOrderMutation.mutate(order);
@@ -174,6 +201,9 @@ export default function POS() {
                       <p className="text-primary-600 font-bold">${formatCurrency(product.salePrice || 0)}</p>
                       <p className="text-xs text-gray-500 mt-1">
                         Stock: <span className={product.stock <= product.minStock ? 'text-orange-600 font-medium' : ''}>{product.stock}</span>
+                        {product.unit && product.unit !== 'unidad' && (
+                          <span className="text-gray-400 ml-1">{UNIT_LABELS[product.unit] || product.unit}</span>
+                        )}
                         {inCart && <span className="text-primary-600 ml-1">({inCart.quantity})</span>}
                       </p>
                     </button>
@@ -243,6 +273,9 @@ export default function POS() {
                       <p className="text-primary-600 font-bold">${formatCurrency(product.salePrice || 0)}</p>
                       <p className="text-xs text-gray-500 mt-1">
                         Stock: <span className={product.stock <= product.minStock ? 'text-orange-600 font-medium' : ''}>{product.stock}</span>
+                        {product.unit && product.unit !== 'unidad' && (
+                          <span className="text-gray-400 ml-1">{UNIT_LABELS[product.unit] || product.unit}</span>
+                        )}
                         {inCart && <span className="text-primary-600 ml-1">({inCart.quantity})</span>}
                       </p>
                     </button>
@@ -280,7 +313,7 @@ export default function POS() {
               <div key={item.product._id} className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl">
                 <div className="flex-1 min-w-0">
                   <p className="font-medium text-gray-900 text-sm truncate">{item.product.name}</p>
-                  <p className="text-xs text-gray-500">${formatCurrency(item.product.salePrice || 0)} c/u</p>
+                  <p className="text-xs text-gray-500">${formatCurrency(item.product.salePrice || 0)} c/u{item.product.unit && item.product.unit !== 'unidad' ? ` (${UNIT_LABELS[item.product.unit] || item.product.unit})` : ''}</p>
                 </div>
                 <div className="flex items-center gap-2">
                   <button
@@ -317,6 +350,41 @@ export default function POS() {
               <span className="text-gray-600">Subtotal ({getTotalItems()} items)</span>
               <span className="font-medium">${formatCurrency(subtotal)}</span>
             </div>
+
+            <button
+              onClick={() => setShowCustomerFields(!showCustomerFields)}
+              className="flex items-center gap-1 text-xs text-gray-500 hover:text-primary-600 transition-colors"
+            >
+              <User size={14} />
+              {showCustomerFields ? 'Ocultar datos del cliente' : 'Agregar cliente'}
+              {showCustomerFields ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+            </button>
+
+            {showCustomerFields && (
+              <div className="space-y-2 pt-1">
+                <div className="relative">
+                  <User className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+                  <input
+                    type="text"
+                    placeholder="Nombre del cliente"
+                    value={customerName}
+                    onChange={(e) => setCustomerName(e.target.value)}
+                    className="input pl-8 py-1.5 text-sm"
+                  />
+                </div>
+                <div className="relative">
+                  <Phone className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+                  <input
+                    type="tel"
+                    placeholder="Teléfono"
+                    value={customerPhone}
+                    onChange={(e) => setCustomerPhone(e.target.value)}
+                    className="input pl-8 py-1.5 text-sm"
+                  />
+                </div>
+              </div>
+            )}
+
             <div className="flex justify-between items-center">
               <span className="text-gray-600">Descuento</span>
               <input
@@ -351,6 +419,17 @@ export default function POS() {
             </button>
           </div>
 
+          <div className="relative">
+            <FileText className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+            <input
+              type="text"
+              placeholder="Notas (opcional)"
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              className="input pl-8 py-1.5 text-sm"
+            />
+          </div>
+
           {paymentMethod === 'cash' && (
             <div className="space-y-2">
               <label className="block text-sm font-medium text-gray-700">Monto Recibido</label>
@@ -363,6 +442,13 @@ export default function POS() {
               />
               
               <div className="grid grid-cols-3 gap-2">
+                <button
+                  onClick={() => handleQuickAmount(total)}
+                  className="btn btn-primary py-1 text-xs col-span-3"
+                  disabled={total <= 0}
+                >
+                  Monto exacto: ${formatCurrency(total)}
+                </button>
                 {quickAmounts.map((amount) => (
                   <button
                     key={amount}
@@ -402,6 +488,89 @@ export default function POS() {
           </button>
         </div>
       </div>
+
+      {lastOrder && (
+        <Modal
+          isOpen={!!lastOrder}
+          onClose={() => setLastOrder(null)}
+          title={
+            <span className="flex items-center gap-2 text-green-700">
+              <CheckCircle size={20} />
+              Venta #{lastOrder.orderNumber}
+            </span>
+          }
+          size="md"
+        >
+          <div className="space-y-4">
+            {lastOrder.customer?.name && (
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-500">Cliente</span>
+                <span className="font-medium">{lastOrder.customer.name}</span>
+              </div>
+            )}
+
+            <div className="border rounded-xl overflow-hidden">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-3 py-2 text-left">Producto</th>
+                    <th className="px-3 py-2 text-right">Cant.</th>
+                    <th className="px-3 py-2 text-right">Subtotal</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y">
+                  {lastOrder.items?.map((item, i) => (
+                    <tr key={i}>
+                      <td className="px-3 py-2">{item.productName}</td>
+                      <td className="px-3 py-2 text-right">{item.quantity}</td>
+                      <td className="px-3 py-2 text-right font-medium">${formatCurrency(item.subtotal)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="space-y-1 text-sm">
+              <div className="flex justify-between">
+                <span className="text-gray-500">Subtotal</span>
+                <span>${formatCurrency(lastOrder.subtotal)}</span>
+              </div>
+              {lastOrder.discount > 0 && (
+                <div className="flex justify-between text-green-600">
+                  <span>Descuento</span>
+                  <span>-${formatCurrency(lastOrder.discount)}</span>
+                </div>
+              )}
+              <div className="flex justify-between text-lg font-bold pt-2 border-t">
+                <span>Total</span>
+                <span className="text-primary-600">${formatCurrency(lastOrder.total)}</span>
+              </div>
+              <div className="flex justify-between text-sm text-gray-500">
+                <span>{lastOrder.paymentMethod === 'cash' ? 'Efectivo' : 'Transferencia'}</span>
+                <span>Pagado: ${formatCurrency(lastOrder.amountPaid)}</span>
+              </div>
+              {lastOrder.change > 0 && (
+                <div className="flex justify-between text-green-600 font-bold">
+                  <span>Vuelto</span>
+                  <span>${formatCurrency(lastOrder.change)}</span>
+                </div>
+              )}
+              {lastOrder.notes && (
+                <div className="pt-2 border-t">
+                  <p className="text-xs text-gray-500">Nota: {lastOrder.notes}</p>
+                </div>
+              )}
+            </div>
+
+            <button
+              onClick={() => setLastOrder(null)}
+              className="btn btn-primary w-full"
+            >
+              Nueva Venta
+            </button>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }
